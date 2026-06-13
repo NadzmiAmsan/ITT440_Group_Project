@@ -1,0 +1,5 @@
+mysql_data/
+*.log
+.vscode/
+Thumbs.db
+desktop.ini
