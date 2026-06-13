@@ -1,0 +1,72 @@
+version: '3.8'
+
+networks:
+  itt440_network:
+    driver: bridge
+
+services:
+  # ─────────────────────────────────────────
+  # TYPE 1 — DATABASE CONTAINER (Your task)
+  # ─────────────────────────────────────────
+  database:
+    build: .                        # uses the Dockerfile in this folder
+    container_name: itt440_database
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpassword
+      MYSQL_DATABASE: itt440_db
+      MYSQL_USER: itt440_user
+      MYSQL_PASSWORD: itt440_pass
+    ports:
+      - "3307:3306"                 # host:container
+    networks:
+      - itt440_network
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost", "-u", "root", "-prootpassword"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+    restart: unless-stopped
+
+  # ─────────────────────────────────────────
+  # TYPE 2 — SERVER CONTAINERS (Teammate's task)
+  # ─────────────────────────────────────────
+  # c_server:
+  #   build: ./c_server
+  #   container_name: itt440_c_server
+  #   ports:
+  #     - "5001:5001"
+  #   networks:
+  #     - itt440_network
+  #   depends_on:
+  #     database:
+  #       condition: service_healthy
+
+  # python_server:
+  #   build: ./python_server
+  #   container_name: itt440_python_server
+  #   ports:
+  #     - "5002:5002"
+  #   networks:
+  #     - itt440_network
+  #   depends_on:
+  #     database:
+  #       condition: service_healthy
+
+  # ─────────────────────────────────────────
+  # TYPE 3 — CLIENT CONTAINERS (Teammate's task)
+  # ─────────────────────────────────────────
+  # c_client:
+  #   build: ./c_client
+  #   container_name: itt440_c_client
+  #   networks:
+  #     - itt440_network
+  #   depends_on:
+  #     - c_server
+
+  # python_client:
+  #   build: ./python_client
+  #   container_name: itt440_python_client
+  #   networks:
+  #     - itt440_network
+  #   depends_on:
+  #     - python_server
