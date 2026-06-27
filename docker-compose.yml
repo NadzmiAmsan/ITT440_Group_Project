@@ -1,15 +1,22 @@
-version: '3.8'
+# =================================================================
+# THE DOCKER DINER 🍳 - Master Menu (docker-compose.yml)
+# =================================================================
+# This file is the Diner's HEAD MANAGER. It opens every kitchen
+# station (container) and connects them all to the same Diner
+# network so Chefs and Waiters can find each other.
+# =================================================================
 
 networks:
-  itt440_network:
+  itt440_network:        # "The Diner" - shared network all stations connect to
     driver: bridge
 
 services:
-  # ─────────────────────────────────────────
-  # TYPE 1 — DATABASE CONTAINER (Your task)
-  # ─────────────────────────────────────────
+
+  # ═══════════════════════════════════════════
+  # THE ORDER BOOK (Database) — Nadzmi
+  # ═══════════════════════════════════════════
   database:
-    build: .                        # uses the Dockerfile in this folder
+    build: .
     container_name: itt440_database
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
@@ -17,7 +24,7 @@ services:
       MYSQL_USER: itt440_user
       MYSQL_PASSWORD: itt440_pass
     ports:
-      - "3307:3306"                 # host:container
+      - "3307:3306"
     networks:
       - itt440_network
     healthcheck:
@@ -27,46 +34,86 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ─────────────────────────────────────────
-  # TYPE 2 — SERVER CONTAINERS (Teammate's task)
-  # ─────────────────────────────────────────
-  # c_server:
-  #   build: ./c_server
-  #   container_name: itt440_c_server
-  #   ports:
-  #     - "5001:5001"
-  #   networks:
-  #     - itt440_network
-  #   depends_on:
-  #     database:
-  #       condition: service_healthy
+  # ═══════════════════════════════════════════
+  # CHEF C's STATION (C Server) — Teammate 1
+  # ═══════════════════════════════════════════
+  c_server:
+    build: ./c_server
+    container_name: itt440_c_server
+    ports:
+      - "5001:5001"
+    networks:
+      - itt440_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # python_server:
-  #   build: ./python_server
-  #   container_name: itt440_python_server
-  #   ports:
-  #     - "5002:5002"
-  #   networks:
-  #     - itt440_network
-  #   depends_on:
-  #     database:
-  #       condition: service_healthy
+  # ═══════════════════════════════════════════
+  # CHEF PY-1's STATION (Python Server 1) — Teammate 2
+  # ═══════════════════════════════════════════
+  python_server1:
+    build: ./python_server
+    container_name: itt440_python_server1
+    ports:
+      - "5002:5002"
+    networks:
+      - itt440_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # ─────────────────────────────────────────
-  # TYPE 3 — CLIENT CONTAINERS (Teammate's task)
-  # ─────────────────────────────────────────
-  # c_client:
-  #   build: ./c_client
-  #   container_name: itt440_c_client
-  #   networks:
-  #     - itt440_network
-  #   depends_on:
-  #     - c_server
+  # ═══════════════════════════════════════════
+  # CHEF PY-2's STATION (Python Server 2) — Nadzmi
+  # ═══════════════════════════════════════════
+  python_server2:
+    build: ./python_server2
+    container_name: itt440_python_server2
+    ports:
+      - "5003:5003"
+    networks:
+      - itt440_network
+    depends_on:
+      database:
+        condition: service_healthy
+    restart: unless-stopped
 
-  # python_client:
-  #   build: ./python_client
-  #   container_name: itt440_python_client
-  #   networks:
-  #     - itt440_network
-  #   depends_on:
-  #     - python_server
+  # ═══════════════════════════════════════════
+  # WAITER FOR CHEF C (C Client) — Teammate 1
+  # ═══════════════════════════════════════════
+  c_client:
+    build: ./c_client
+    container_name: itt440_c_client
+    networks:
+      - itt440_network
+    depends_on:
+      - c_server
+    stdin_open: true
+    tty: true
+
+  # ═══════════════════════════════════════════
+  # WAITER FOR CHEF PY-1 (Python Client 1) — Teammate 2
+  # ═══════════════════════════════════════════
+  python_client1:
+    build: ./python_client
+    container_name: itt440_python_client1
+    networks:
+      - itt440_network
+    depends_on:
+      - python_server1
+    stdin_open: true
+    tty: true
+
+  # ═══════════════════════════════════════════
+  # WAITER FOR CHEF PY-2 (Python Client 2) — Nadzmi
+  # ═══════════════════════════════════════════
+  python_client2:
+    build: ./python_client2
+    container_name: itt440_python_client2
+    networks:
+      - itt440_network
+    depends_on:
+      - python_server2
+    stdin_open: true
+    tty: true

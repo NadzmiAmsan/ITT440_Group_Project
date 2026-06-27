@@ -1,109 +1,86 @@
-# ITT440 – Database Container (Your Task)
+# ITT440 Network Programming — Group Project
 
-## Files
+## Group Members
+| Name | Task |
+|------|------|
+| Nadzmi | Database + Python Server 2 + Python Client 2 |
+| Teammate 1 | C Server + C Client |
+| Teammate 2 | Python Server 1 + Python Client 1 |
+
+---
+
+## Project Structure
 ```
-.
-├── Dockerfile          ← builds the MySQL image
-├── init.sql            ← creates database & table automatically
-├── docker-compose.yml  ← orchestrates all containers (shared with team)
-└── README.md
+ITT440_Group_Project/
+├── Dockerfile              ← Database image
+├── init.sql                ← Database setup (tables, trigger, view)
+├── docker-compose.yml      ← All containers
+├── python_server2/         ← Nadzmi's Python server (port 5003)
+├── python_client2/         ← Nadzmi's Python client
+├── c_server/               ← Teammate 1's C server (port 5001)
+├── c_client/               ← Teammate 1's C client
+├── python_server/          ← Teammate 2's Python server (port 5002)
+└── python_client/          ← Teammate 2's Python client
 ```
 
 ---
 
-## Database Details (share with teammates)
+## Database Details
+| Setting | Value |
+|---------|-------|
+| Host (inside Docker) | `database` |
+| Port | `3306` |
+| Database | `itt440_db` |
+| Username | `itt440_user` |
+| Password | `itt440_pass` |
 
-| Setting        | Value             |
-|----------------|-------------------|
-| Host           | `database`        |  ← use this hostname inside Docker network
-| Port           | `3306`            |
-| Database       | `itt440_db`       |
-| Username       | `itt440_user`     |
-| Password       | `itt440_pass`     |
-| Root Password  | `rootpassword`    |
-| Table          | `socket_data`     |
+## Tables
+| Table | Purpose |
+|-------|---------|
+| `socket_data` | Stores user, points, datetime_stamp |
+| `socket_data_history` | Audit trail of every points update |
 
----
-
-## Table Structure
-
-```sql
-CREATE TABLE socket_data (
-    id             INT AUTO_INCREMENT PRIMARY KEY,
-    user           VARCHAR(100) NOT NULL UNIQUE,
-    points         INT NOT NULL DEFAULT 0,
-    datetime_stamp DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP
-                   ON UPDATE CURRENT_TIMESTAMP
-);
-```
-
-Initial rows inserted automatically:
-- `c_server_user`      → for C server teammate
-- `python_server_user` → for Python server teammate
+## View
+| View | Purpose |
+|------|---------|
+| `leaderboard` | Ranked list of all servers by points |
 
 ---
 
-## How to Run (Database Only)
+## Port Assignments
+| Container | Port |
+|-----------|------|
+| Database | 3306 (internal) / 3307 (host) |
+| C Server | 5001 |
+| Python Server 1 | 5002 |
+| Python Server 2 | 5003 |
 
+---
+
+## How to Run
+
+### Database only (Nadzmi)
 ```bash
-# 1. Build and start the database container
 docker-compose up -d database
-
-# 2. Check it is running
-docker ps
-
-# 3. Verify the table was created
-docker exec -it itt440_database mysql -u itt440_user -pitt440_pass itt440_db -e "SELECT * FROM socket_data;"
 ```
 
----
-
-## How to Run (Full Project – all teammates done)
-
+### All containers (after everyone pushes their code)
 ```bash
-# Start everything
-docker-compose up -d
-
-# View logs
-docker-compose logs -f
-
-# Stop everything
-docker-compose down
+docker-compose up -d database c_server python_server1 python_server2
 ```
 
----
-
-## SQL teammates need (UPDATE every 30 seconds)
-
-```sql
--- C server uses this (replace points value):
-INSERT INTO socket_data (user, points, datetime_stamp)
-VALUES ('c_server_user', 1, NOW())
-ON DUPLICATE KEY UPDATE
-    points = points + 1,
-    datetime_stamp = NOW();
-
--- Python server uses this:
-INSERT INTO socket_data (user, points, datetime_stamp)
-VALUES ('python_server_user', 1, NOW())
-ON DUPLICATE KEY UPDATE
-    points = points + 1,
-    datetime_stamp = NOW();
-
--- Client asks server → server runs this SELECT:
-SELECT user, points, datetime_stamp
-FROM socket_data
-WHERE user = 'c_server_user';
-```
-
----
-
-## Useful Commands
-
+### Test clients
 ```bash
-# Enter MySQL shell inside container
-docker exec -it itt440_database mysql -u root -prootpassword itt440_db
+docker-compose run --rm c_client
+docker-compose run --rm python_client1
+docker-compose run --rm python_client2
+```
 
-# Remove container and volume (reset database)
-docker-compose down -v
+### Verify database
+```bash
+# Show all tables
+docker exec -it itt440_database mysql -u itt440_user -pitt440_pass itt440_db -e "SHOW TABLES;"
+
+# Show leaderboard
+docker exec -it itt440_database mysql -u itt440_user -pitt440_pass itt440_db -e "SELECT * FROM leaderboard;"
 ```
