@@ -17,6 +17,8 @@
 =================================================================
 */
 
+#define _GNU_SOURCE   /* needed for timegm() and strptime() on glibc */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -32,6 +34,35 @@
 #define DB_PASS     "itt440_pass"
 #define DB_NAME     "itt440_db"
 #define CHEF_NAME   "c_server_user"   // Chef C's name in the Order Book
+
+#define KL_OFFSET_SECONDS (8 * 3600)  // GMT+8 Kuala Lumpur
+
+/* ── Convert a MySQL "YYYY-MM-DD HH:MM:SS" UTC string into a    ──
+   ── GMT+8 (Asia/Kuala_Lumpur) formatted string.                ── */
+void to_kl_time(const char *utc_str, char *out, size_t out_size) {
+    if (utc_str == NULL) {
+        snprintf(out, out_size, "N/A");
+        return;
+    }
+
+    struct tm tm_val;
+    memset(&tm_val, 0, sizeof(tm_val));
+
+    if (strptime(utc_str, "%Y-%m-%d %H:%M:%S", &tm_val) == NULL) {
+        // Couldn't parse, just echo the original value back
+        snprintf(out, out_size, "%s", utc_str);
+        return;
+    }
+
+    // Interpret the parsed fields as UTC (NOT local time)
+    time_t utc_time = timegm(&tm_val);
+    time_t kl_time   = utc_time + KL_OFFSET_SECONDS;
+
+    struct tm kl_tm;
+    gmtime_r(&kl_time, &kl_tm);
+
+    strftime(out, out_size, "%Y-%m-%d %H:%M:%S", &kl_tm);
+}
 
 /* ── Connect to the Order Book (Database) ────────────────────── */
 MYSQL *db_connect() {
@@ -88,10 +119,12 @@ void handle_get_points(char *result, size_t result_size) {
     } else {
         MYSQL_RES *res = mysql_store_result(conn);
         MYSQL_ROW row  = mysql_fetch_row(res);
-        if (row)
+        if (row) {
+            char kl_buf[64];
+            to_kl_time(row[2], kl_buf, sizeof(kl_buf));
             snprintf(result, result_size,
-                "Chef: %s | Dishes Cooked: %s | Last Dish: %s", row[0], row[1], row[2]);
-        else
+                "Chef: %s | Dishes Cooked: %s | Last Dish: %s (GMT+8 KL)", row[0], row[1], kl_buf);
+        } else
             snprintf(result, result_size, "No record found.");
         mysql_free_result(res);
     }
@@ -122,11 +155,13 @@ void handle_get_history(char *result, size_t result_size) {
         return;
     }
 
-    char line[128];
+    char line[160];
+    char kl_buf[64];
     strcpy(result, "Kitchen Activity Log (last 5 dishes):\n");
     MYSQL_ROW row;
     while ((row = mysql_fetch_row(res)) != NULL) {
-        snprintf(line, sizeof(line), "  %s -> %s dishes @ %s\n", row[0], row[1], row[2]);
+        to_kl_time(row[2], kl_buf, sizeof(kl_buf));
+        snprintf(line, sizeof(line), "  %s -> %s dishes @ %s (GMT+8 KL)\n", row[0], row[1], kl_buf);
         strncat(result, line, result_size - strlen(result) - 1);
     }
     mysql_free_result(res);
@@ -169,9 +204,11 @@ void handle_get_time(char *result, size_t result_size) {
     } else {
         MYSQL_RES *res = mysql_store_result(conn);
         MYSQL_ROW row  = mysql_fetch_row(res);
-        if (row)
-            snprintf(result, result_size, "Chef C's last dish was cooked at: %s", row[0]);
-        else
+        if (row) {
+            char kl_buf[64];
+            to_kl_time(row[0], kl_buf, sizeof(kl_buf));
+            snprintf(result, result_size, "Chef C's last dish was cooked at: %s (GMT+8 KL)", kl_buf);
+        } else
             snprintf(result, result_size, "No record found.");
         mysql_free_result(res);
     }

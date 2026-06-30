@@ -22,7 +22,7 @@ import socket
 import threading
 import mysql.connector
 import time
-from datetime import datetime
+from datetime import datetime, timezone, timedelta
 
 
 HOST = '0.0.0.0'
@@ -37,6 +37,18 @@ ORDER_BOOK_CONFIG = {
 }
 
 CHEF_NAME = 'python_server_user_1'   # Chef Py-1's name in the Order Book
+
+# MySQL stores timestamps in the container's SYSTEM timezone, which we've
+# confirmed is UTC. We convert to GMT+8 (Asia/Kuala_Lumpur) for display.
+KL_TZ = timezone(timedelta(hours=8))
+
+
+def to_kl_time(raw_ts):
+    """Convert a naive UTC datetime from MySQL into a formatted GMT+8 KL string."""
+    if raw_ts is None:
+        return "N/A"
+    kl_ts = raw_ts.replace(tzinfo=timezone.utc).astimezone(KL_TZ)
+    return kl_ts.strftime("%Y-%m-%d %H:%M:%S")
 
 
 def open_order_book():
@@ -65,7 +77,7 @@ def cook_one_dish():
             conn.commit()
             cursor.close()
             conn.close()
-            print(f"[{datetime.now()}] 🍳 Chef Py-1 cooked a dish! Logged in Order Book.")
+            print(f"[{to_kl_time(datetime.utcnow())} GMT+8] 🍳 Chef Py-1 cooked a dish! Logged in Order Book.")
         except Exception as e:
             print(f"[Order Book ERROR] {e}")
         time.sleep(30)
@@ -83,7 +95,7 @@ def handle_get_points():
     cursor.close()
     conn.close()
     if row:
-        return f"Chef: {row[0]} | Dishes Cooked: {row[1]} | Last Dish: {row[2]}"
+        return f"Chef: {row[0]} | Dishes Cooked: {row[1]} | Last Dish: {to_kl_time(row[2])} (GMT+8 KL)"
     return "No record found."
 
 
@@ -107,7 +119,7 @@ def handle_get_history():
 
     lines = ["Kitchen Activity Log (last 5 dishes):"]
     for before, after, ts in rows:
-        lines.append(f"  {before} -> {after} dishes @ {ts}")
+        lines.append(f"  {before} -> {after} dishes @ {to_kl_time(ts)} (GMT+8 KL)")
     return "\n".join(lines)
 
 
@@ -140,7 +152,7 @@ def handle_get_time():
     cursor.close()
     conn.close()
     if row:
-        return f"Chef Py-1's last dish was cooked at: {row[0]}"
+        return f"Chef Py-1's last dish was cooked at: {to_kl_time(row[0])} (GMT+8 KL)"
     return "No record found."
 
 

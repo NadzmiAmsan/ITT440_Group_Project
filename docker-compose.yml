@@ -16,7 +16,7 @@ services:
   # THE ORDER BOOK (Database) — Nadzmi
   # ═══════════════════════════════════════════
   database:
-    build: .
+    image: mysql:8.0
     container_name: itt440_database
     environment:
       MYSQL_ROOT_PASSWORD: rootpassword
@@ -25,6 +25,8 @@ services:
       MYSQL_PASSWORD: itt440_pass
     ports:
       - "3307:3306"
+    volumes:
+      - ./init.sql:/docker-entrypoint-initdb.d/init.sql
     networks:
       - itt440_network
     healthcheck:
