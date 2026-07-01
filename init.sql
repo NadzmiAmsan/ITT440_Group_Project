@@ -1,15 +1,8 @@
 -- =============================================================
--- ITT440 Network Programming - Group Project
--- THEME: "The Docker Diner" 🍳
--- Database Initialization Script
--- Author  : Nadzmi
+-- The Docker Diner database setup
 -- =============================================================
--- KITCHEN STORY:
--- This database is the Diner's ORDER BOOK.
--- 3 Chefs (C Chef, Py Chef 1, Py Chef 2) each run their own
--- isolated kitchen station (Docker container). Every 30 seconds,
--- each Chef finishes one dish and logs it in the Order Book.
--- Waiters (clients) walk up and ask "how many dishes so far?"
+-- This script creates the order book tables, history log,
+-- leaderboard view, and seed data for the chefs.
 -- =============================================================
 
 -- ── 1. THE DINER (DATABASE) ────────────────────────────────────
@@ -71,9 +64,9 @@ CREATE OR REPLACE VIEW leaderboard AS
 -- Day 1 setup: 3 Chefs clock in for their shift, each starting
 -- with 0 dishes cooked.
 INSERT INTO socket_data (user, points, datetime_stamp) VALUES
-    ('c_server_user',        0, NOW()),   -- Chef C (Teammate 1's station)
-    ('python_server_user_1', 0, NOW()),   -- Chef Py-1 (Teammate 2's station)
-    ('python_server_user_2', 0, NOW())    -- Chef Py-2 (Nadzmi's station)
+    ('Chef Cee',    0, NOW()),   -- Chef C (Teammate 1's station)
+    ('Chef Paiwan', 0, NOW()),   -- Chef Py-1 (Teammate 2's station)
+    ('Chef Paitu',  0, NOW())    -- Chef Py-2 (Nadzmi's station)
 ON DUPLICATE KEY UPDATE user = user;
 
 -- ── 7. OPENING CHECKS (VERIFY) ──────────────────────────────────

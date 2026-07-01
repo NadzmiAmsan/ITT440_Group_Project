@@ -1,20 +1,10 @@
 /*
-=================================================================
- THE DOCKER DINER - Chef C's Kitchen Station (SERVER)
-=================================================================
- ELI5: This is Chef C. Every 30 seconds, Chef C cooks one dish
- and writes it down in the Order Book (database): "+1 dish!"
-
- A Waiter (client) can now ask Chef C FOUR different questions:
-
-   GET_POINTS  -> "How many dishes have you cooked?"
-   GET_HISTORY -> "Show me your last 5 dish updates."
-   GET_RANK    -> "What's your rank on the Top Chef Board?"
-   GET_TIME    -> "When did you cook your last dish?"
-
- Chef C works inside their OWN sealed kitchen station
- (Docker container) - completely separate from the other chefs.
-=================================================================
+==============================================================
+The Docker Diner - Chef C server
+==============================================================
+This server runs Chef C's kitchen station. It tracks points
+in MySQL and answers waiter requests.
+==============================================================
 */
 
 #define _GNU_SOURCE   /* needed for timegm() and strptime() on glibc */
@@ -33,7 +23,6 @@
 #define DB_USER     "itt440_user"
 #define DB_PASS     "itt440_pass"
 #define DB_NAME     "itt440_db"
-#define CHEF_NAME   "c_server_user"   // Chef C's name in the Order Book
 
 #define KL_OFFSET_SECONDS (8 * 3600)  // GMT+8 Kuala Lumpur
 
@@ -61,7 +50,14 @@ void to_kl_time(const char *utc_str, char *out, size_t out_size) {
     struct tm kl_tm;
     gmtime_r(&kl_time, &kl_tm);
 
-    strftime(out, out_size, "%Y-%m-%d %H:%M:%S", &kl_tm);
+    strftime(out, out_size, "%d-%m-%Y %H:%M:%S", &kl_tm);
+}
+
+const char *get_configured_chef_name(void) {
+    const char *chef_name = getenv("CHEF_NAME");
+    if (chef_name != NULL && chef_name[0] != '\0')
+        return chef_name;
+    return "Chef";
 }
 
 /* ── Connect to the Order Book (Database) ────────────────────── */
@@ -81,18 +77,19 @@ MYSQL *db_connect() {
 void cook_one_dish() {
     MYSQL *conn = db_connect();
     char query[512];
+    const char *chef_name = get_configured_chef_name();
 
-    // "UPSERT": if Chef C's row exists, +1 dish. If not, create it.
+    // "UPSERT": if the chef row exists, +1 dish. If not, create it.
     snprintf(query, sizeof(query),
         "INSERT INTO socket_data (user, points, datetime_stamp) "
         "VALUES ('%s', 1, NOW()) "
         "ON DUPLICATE KEY UPDATE points = points + 1, datetime_stamp = NOW()",
-        CHEF_NAME);
+        chef_name);
 
     if (mysql_query(conn, query))
         fprintf(stderr, "[Order Book ERROR] %s\n", mysql_error(conn));
     else
-        printf("[Chef C] 🍳 Dish cooked! Logged in Order Book.\n");
+        printf("[%s] 🍳 Dish cooked! Logged in Order Book.\n", chef_name);
 
     mysql_close(conn);
 }
@@ -106,13 +103,64 @@ void *kitchen_timer(void *arg) {
     return NULL;
 }
 
+/* ── Helper: GET_NAME - ask the current chef name from the database ─── */
+void handle_get_name(char *result, size_t result_size) {
+    MYSQL *conn = db_connect();
+    char query[256];
+    const char *chef_name = get_configured_chef_name();
+    snprintf(query, sizeof(query),
+        "SELECT user FROM socket_data WHERE user='%s'",
+        chef_name);
+
+    if (mysql_query(conn, query)) {
+        snprintf(result, result_size, "%s", chef_name);
+    } else {
+        MYSQL_RES *res = mysql_store_result(conn);
+        MYSQL_ROW row  = mysql_fetch_row(res);
+        if (row && row[0])
+            snprintf(result, result_size, "%s", row[0]);
+        else
+            snprintf(result, result_size, "%s", chef_name);
+        mysql_free_result(res);
+    }
+    mysql_close(conn);
+}
+
+/* ── Command 5: ADD_POINTS - add extra dishes to the current chef ─── */
+void handle_add_points(char *result, size_t result_size, const char *request) {
+    MYSQL *conn = db_connect();
+    const char *chef_name = get_configured_chef_name();
+    int amount = 0;
+
+    if (sscanf(request, "ADD_POINTS %d", &amount) != 1 || amount <= 0) {
+        snprintf(result, result_size, "Please use: ADD_POINTS <number>");
+        return;
+    }
+
+    char query[512];
+    snprintf(query, sizeof(query),
+        "INSERT INTO socket_data (user, points, datetime_stamp) "
+        "VALUES ('%s', 0, NOW()) "
+        "ON DUPLICATE KEY UPDATE points = points + %d, datetime_stamp = NOW()",
+        chef_name, amount);
+
+    if (mysql_query(conn, query)) {
+        snprintf(result, result_size, "Order Book Error: %s", mysql_error(conn));
+    } else {
+        snprintf(result, result_size, "Added %d extra dish point(s) to %s.", amount, chef_name);
+    }
+
+    mysql_close(conn);
+}
+
 /* ── Command 1: GET_POINTS - "How many dishes cooked?" ────────── */
 void handle_get_points(char *result, size_t result_size) {
     MYSQL *conn = db_connect();
     char query[256];
+    const char *chef_name = get_configured_chef_name();
     snprintf(query, sizeof(query),
         "SELECT user, points, datetime_stamp FROM socket_data WHERE user='%s'",
-        CHEF_NAME);
+        chef_name);
 
     if (mysql_query(conn, query)) {
         snprintf(result, result_size, "Order Book Error: %s", mysql_error(conn));
@@ -123,9 +171,9 @@ void handle_get_points(char *result, size_t result_size) {
             char kl_buf[64];
             to_kl_time(row[2], kl_buf, sizeof(kl_buf));
             snprintf(result, result_size,
-                "Chef: %s | Dishes Cooked: %s | Last Dish: %s (GMT+8 KL)", row[0], row[1], kl_buf);
+                "I have cooked %s dishes so far! My last dish was served at %s (GMT+8 KL).", row[1], kl_buf);
         } else
-            snprintf(result, result_size, "No record found.");
+            snprintf(result, result_size, "I haven't cooked anything yet — no record found.");
         mysql_free_result(res);
     }
     mysql_close(conn);
@@ -135,11 +183,12 @@ void handle_get_points(char *result, size_t result_size) {
 void handle_get_history(char *result, size_t result_size) {
     MYSQL *conn = db_connect();
     char query[256];
+    const char *chef_name = get_configured_chef_name();
     snprintf(query, sizeof(query),
         "SELECT points_before, points_after, updated_at "
         "FROM socket_data_history WHERE user='%s' "
         "ORDER BY updated_at DESC LIMIT 5",
-        CHEF_NAME);
+        chef_name);
 
     if (mysql_query(conn, query)) {
         snprintf(result, result_size, "Order Book Error: %s", mysql_error(conn));
@@ -149,7 +198,7 @@ void handle_get_history(char *result, size_t result_size) {
 
     MYSQL_RES *res = mysql_store_result(conn);
     if (mysql_num_rows(res) == 0) {
-        snprintf(result, result_size, "Kitchen Activity Log is empty so far.");
+        snprintf(result, result_size, "I haven't logged any dishes yet — my kitchen activity log is empty!");
         mysql_free_result(res);
         mysql_close(conn);
         return;
@@ -157,11 +206,11 @@ void handle_get_history(char *result, size_t result_size) {
 
     char line[160];
     char kl_buf[64];
-    strcpy(result, "Kitchen Activity Log (last 5 dishes):\n");
+    strcpy(result, "Here are my last 5 dish updates:\n");
     MYSQL_ROW row;
     while ((row = mysql_fetch_row(res)) != NULL) {
         to_kl_time(row[2], kl_buf, sizeof(kl_buf));
-        snprintf(line, sizeof(line), "  %s -> %s dishes @ %s (GMT+8 KL)\n", row[0], row[1], kl_buf);
+        snprintf(line, sizeof(line), "  I went from %s to %s dishes @ %s (GMT+8 KL)\n", row[0], row[1], kl_buf);
         strncat(result, line, result_size - strlen(result) - 1);
     }
     mysql_free_result(res);
@@ -172,9 +221,10 @@ void handle_get_history(char *result, size_t result_size) {
 void handle_get_rank(char *result, size_t result_size) {
     MYSQL *conn = db_connect();
     char query[256];
+    const char *chef_name = get_configured_chef_name();
     snprintf(query, sizeof(query),
         "SELECT `rank`, points FROM leaderboard WHERE user='%s'",
-        CHEF_NAME);
+        chef_name);
 
     if (mysql_query(conn, query)) {
         snprintf(result, result_size, "Order Book Error: %s", mysql_error(conn));
@@ -183,9 +233,9 @@ void handle_get_rank(char *result, size_t result_size) {
         MYSQL_ROW row  = mysql_fetch_row(res);
         if (row)
             snprintf(result, result_size,
-                "Chef C's Rank: #%s on the Top Chef Board (with %s dishes)", row[0], row[1]);
+                "I am currently ranked #%s on the Top Chef Board, with %s dishes cooked!", row[0], row[1]);
         else
-            snprintf(result, result_size, "Not ranked yet - no dishes cooked.");
+            snprintf(result, result_size, "I am not ranked yet — I haven't cooked any dishes.");
         mysql_free_result(res);
     }
     mysql_close(conn);
@@ -195,9 +245,10 @@ void handle_get_rank(char *result, size_t result_size) {
 void handle_get_time(char *result, size_t result_size) {
     MYSQL *conn = db_connect();
     char query[256];
+    const char *chef_name = get_configured_chef_name();
     snprintf(query, sizeof(query),
         "SELECT datetime_stamp FROM socket_data WHERE user='%s'",
-        CHEF_NAME);
+        chef_name);
 
     if (mysql_query(conn, query)) {
         snprintf(result, result_size, "Order Book Error: %s", mysql_error(conn));
@@ -207,9 +258,9 @@ void handle_get_time(char *result, size_t result_size) {
         if (row) {
             char kl_buf[64];
             to_kl_time(row[0], kl_buf, sizeof(kl_buf));
-            snprintf(result, result_size, "Chef C's last dish was cooked at: %s (GMT+8 KL)", kl_buf);
+            snprintf(result, result_size, "My last dish was cooked at %s (GMT+8 KL).", kl_buf);
         } else
-            snprintf(result, result_size, "No record found.");
+            snprintf(result, result_size, "I haven't cooked any dishes yet — no time to report.");
         mysql_free_result(res);
     }
     mysql_close(conn);
@@ -233,17 +284,38 @@ void *serve_waiter(void *arg) {
 
         memset(response, 0, sizeof(response));
 
-        if (strcmp(buffer, "GET_POINTS") == 0) {
+        char command[32];
+        strcpy(command, buffer);
+
+        if (strncmp(buffer, "ADD_POINTS", 10) == 0) {
+            strcpy(command, "ADD_POINTS");
+        } else if (strcmp(command, "1") == 0) {
+            strcpy(command, "GET_POINTS");
+        } else if (strcmp(command, "2") == 0) {
+            strcpy(command, "GET_HISTORY");
+        } else if (strcmp(command, "3") == 0) {
+            strcpy(command, "GET_RANK");
+        } else if (strcmp(command, "4") == 0) {
+            strcpy(command, "GET_TIME");
+        } else if (strcmp(command, "5") == 0) {
+            strcpy(command, "ADD_POINTS");
+        }
+
+        if (strcmp(command, "GET_NAME") == 0) {
+            handle_get_name(response, sizeof(response));
+        } else if (strcmp(command, "GET_POINTS") == 0) {
             handle_get_points(response, sizeof(response));
-        } else if (strcmp(buffer, "GET_HISTORY") == 0) {
+        } else if (strcmp(command, "GET_HISTORY") == 0) {
             handle_get_history(response, sizeof(response));
-        } else if (strcmp(buffer, "GET_RANK") == 0) {
+        } else if (strcmp(command, "GET_RANK") == 0) {
             handle_get_rank(response, sizeof(response));
-        } else if (strcmp(buffer, "GET_TIME") == 0) {
+        } else if (strcmp(command, "GET_TIME") == 0) {
             handle_get_time(response, sizeof(response));
+        } else if (strcmp(command, "ADD_POINTS") == 0) {
+            handle_add_points(response, sizeof(response), buffer);
         } else {
             snprintf(response, sizeof(response),
-                "Chef C doesn't understand. Try: GET_POINTS, GET_HISTORY, GET_RANK, GET_TIME");
+                "%s doesn't understand. Try: 1, 2, 3, 4, or 5", get_configured_chef_name());
         }
 
         strncat(response, "\n", sizeof(response) - strlen(response) - 1);
@@ -273,8 +345,8 @@ int main() {
 
     bind(counter_fd, (struct sockaddr *)&addr, sizeof(addr));
     listen(counter_fd, 5);
-    printf("[Chef C] 👨‍🍳 Kitchen station open on port %d. Ready to cook!\n", PORT);
-    printf("[Chef C] Accepted commands: GET_POINTS, GET_HISTORY, GET_RANK, GET_TIME\n");
+    printf("[%s] 👨‍🍳 Kitchen station open on port %d. Ready to cook!\n", get_configured_chef_name(), PORT);
+    printf("[%s] Accepted commands: 1, 2, 3, 4\n", get_configured_chef_name());
 
     // Keep welcoming Waiters forever
     while (1) {

@@ -42,6 +42,8 @@ services:
   c_server:
     build: ./c_server
     container_name: itt440_c_server
+    environment:
+      CHEF_NAME: Chef Cee
     ports:
       - "5001:5001"
     networks:
@@ -57,6 +59,8 @@ services:
   python_server1:
     build: ./python_server
     container_name: itt440_python_server1
+    environment:
+      CHEF_NAME: Chef Paiwan
     ports:
       - "5002:5002"
     networks:
@@ -72,6 +76,8 @@ services:
   python_server2:
     build: ./python_server2
     container_name: itt440_python_server2
+    environment:
+      CHEF_NAME: Chef Paitu
     ports:
       - "5003:5003"
     networks:

@@ -1,18 +1,8 @@
 """
-=================================================================
- THE DOCKER DINER - Waiter for Chef Py-2 (CLIENT)
- (Nadzmi's Client)
-=================================================================
- ELI5: This Waiter can now ask Chef Py-2 FOUR different
- questions, not just one:
+The Docker Diner - Waiter client for Chef Py-2.
 
-   GET_POINTS  -> "How many dishes have you cooked?"
-   GET_HISTORY -> "Show me your last 5 dish updates."
-   GET_RANK    -> "What's your rank on the Top Chef Board?"
-   GET_TIME    -> "When did you cook your last dish?"
-
- The Waiter ONLY talks to Chef Py-2 - never to Chef C or Chef Py-1.
-=================================================================
+This client connects to the Python server and lets the waiter
+check stats or award extra points.
 """
 
 import socket
@@ -21,16 +11,18 @@ import time
 CHEF_PY2_STATION = 'python_server2'   # Chef Py-2's station name on the network
 CHEF_PY2_PORT = 5003
 
-MENU = """
-========================================
-  THE DOCKER DINER - Waiter for Chef Py-2
-========================================
-  Pick a question to ask Chef Py-2:
+def build_menu(chef_name):
+    return f"""
+╔══════════════════════════════════════════╗
+║  🍽️  THE DOCKER DINER - Waiter for {chef_name}  ║
+╚══════════════════════════════════════════╝
+  Pick a question to ask {chef_name}:
 
-  1) GET_POINTS  - How many dishes cooked?
-  2) GET_HISTORY - Last 5 dish updates
-  3) GET_RANK    - My rank on Top Chef Board
-  4) GET_TIME    - When was the last dish?
+  1) 🍳 Chef, how many dishes have you cooked so far?
+  2) 🧾 Can you show me the updates for the last 5 dishes?
+  3) 🏆 Where do you currently stand on the Top Chef Board?
+  4) ⏰ What time did the last dish go out?
+  5) 🎁 Waiter's treat! I'd like to award extra dish points to this chef.
 
   Type 'exit' to leave the counter
 ========================================
@@ -43,29 +35,47 @@ def approach_counter():
         try:
             s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s.connect((CHEF_PY2_STATION, CHEF_PY2_PORT))
-            print(f"[Waiter] Reached Chef Py-2's counter ({CHEF_PY2_STATION}:{CHEF_PY2_PORT})")
+            print(f"✨ [Waiter] Reached Chef Py-2's counter ({CHEF_PY2_STATION}:{CHEF_PY2_PORT})")
             return s
         except Exception as e:
-            print(f"[Waiter] Chef Py-2's counter not open yet, waiting 3s... ({e})")
+            print(f"⏳ [Waiter] Chef Py-2's counter not open yet, waiting 3s... ({e})")
             time.sleep(3)
+
+
+def get_chef_name(sock):
+    try:
+        sock.sendall(b"GET_NAME\n")
+        name = sock.recv(1024).decode('utf-8').strip()
+        return name or "Chef"
+    except Exception:
+        return "Chef"
 
 
 def main():
     sock = approach_counter()
-    print(MENU)
+    chef_name = get_chef_name(sock)
+    print(f"\n✨ Connected to {chef_name}'s kitchen counter!")
+    print(build_menu(chef_name))
 
     while True:
         try:
-            question = input("Ask Chef Py-2: ").strip()
+            question = input(f"🧑‍🍳 Ask {chef_name} (Type 'exit' to leave the counter): ").strip()
             if not question:
                 continue
             if question.lower() == 'exit':
-                print("Waiter leaves the counter. Goodbye!")
+                print("👋 Waiter leaves the counter. Goodbye!")
                 break
+
+            if question == '5':
+                extra_points = input("🎁 How many extra dish points to add? ").strip()
+                if not extra_points.isdigit() or int(extra_points) <= 0:
+                    print("⚠️ Please enter a positive number.")
+                    continue
+                question = f"ADD_POINTS {extra_points}"
 
             sock.sendall((question + "\n").encode('utf-8'))
             answer = sock.recv(1024).decode('utf-8').strip()
-            print(f"\n[Chef Py-2 says]\n{answer}\n")
+            print(f"\n[{chef_name} says]\n{answer}\n")
 
         except (BrokenPipeError, ConnectionResetError):
             print("[Waiter] Lost connection. Walking back to the counter...")

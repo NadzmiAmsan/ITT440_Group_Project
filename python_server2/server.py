@@ -1,24 +1,10 @@
 """
-=================================================================
- THE DOCKER DINER - Chef Py-2's Kitchen Station (SERVER)
- (Nadzmi's Station)
-=================================================================
- ELI5: This is Chef Py-2 (you!). Every 30 seconds, Chef Py-2
- cooks one dish and writes it down in the Order Book: "+1 dish!"
+The Docker Diner - Server for Chef Py-2.
 
- A Waiter (client) can now ask Chef Py-2 FOUR different
- questions, not just one:
-
-   GET_POINTS  -> "How many dishes have you cooked?"
-   GET_HISTORY -> "Show me your last 5 dish updates."
-   GET_RANK    -> "What's your rank on the Top Chef Board?"
-   GET_TIME    -> "When did you cook your last dish?"
-
- Chef Py-2 works inside their OWN sealed kitchen station
- (Docker container) - completely separate from Chef C and Chef Py-1.
-=================================================================
+This server tracks dish points and answers waiter requests.
 """
 
+import os
 import socket
 import threading
 import mysql.connector
@@ -37,7 +23,7 @@ ORDER_BOOK_CONFIG = {
     'database': 'itt440_db'
 }
 
-CHEF_NAME = 'python_server_user_2'   # Chef Py-2's name in the Order Book
+CHEF_NAME = os.getenv("CHEF_NAME", "").strip() or "Chef"
 
 # MySQL stores timestamps in the container's SYSTEM timezone, which we've
 # confirmed is UTC. We convert to GMT+8 (Asia/Kuala_Lumpur) for display.
@@ -49,7 +35,7 @@ def to_kl_time(raw_ts):
     if raw_ts is None:
         return "N/A"
     kl_ts = raw_ts.replace(tzinfo=timezone.utc).astimezone(KL_TZ)
-    return kl_ts.strftime("%Y-%m-%d %H:%M:%S")
+    return kl_ts.strftime("%d-%m-%Y %H:%M:%S")
 
 
 def open_order_book():
@@ -62,10 +48,28 @@ def open_order_book():
             time.sleep(3)
 
 
+def resolve_chef_name():
+    configured_name = CHEF_NAME
+    conn = open_order_book()
+    cursor = conn.cursor()
+    cursor.execute("""
+        SELECT user
+        FROM socket_data
+        WHERE user = %s
+    """, (configured_name,))
+    row = cursor.fetchone()
+    cursor.close()
+    conn.close()
+    if row and row[0]:
+        return row[0]
+    return configured_name
+
+
 def cook_one_dish():
     """Background timer: cooks (and logs) one dish every 30 seconds."""
     while True:
         try:
+            chef_name = resolve_chef_name()
             conn = open_order_book()
             cursor = conn.cursor()
             cursor.execute("""
@@ -74,36 +78,43 @@ def cook_one_dish():
                 ON DUPLICATE KEY UPDATE
                     points         = points + 1,
                     datetime_stamp = NOW()
-            """, (CHEF_NAME,))
+            """, (chef_name,))
             conn.commit()
             cursor.close()
             conn.close()
-            print(f"[{to_kl_time(datetime.utcnow())} GMT+8] 🍳 Chef Py-2 cooked a dish! Logged in Order Book.")
+            print(f"[{to_kl_time(datetime.utcnow())} GMT+8] 🍳 {chef_name} cooked a dish! Logged in Order Book.")
         except Exception as e:
             print(f"[Order Book ERROR] {e}")
         time.sleep(30)
 
 
+# ── Helper: GET_NAME ────────────────────────────────────────
+def handle_get_name():
+    return resolve_chef_name()
+
+
 # ── Command 1: GET_POINTS ──────────────────────────────────────
 def handle_get_points():
     """'How many dishes have you cooked?' - reads socket_data."""
+    chef_name = resolve_chef_name()
     conn = open_order_book()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT user, points, datetime_stamp
         FROM socket_data WHERE user = %s
-    """, (CHEF_NAME,))
+    """, (chef_name,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
     if row:
-        return f"Chef: {row[0]} | Dishes Cooked: {row[1]} | Last Dish: {to_kl_time(row[2])} (GMT+8 KL)"
-    return "No record found."
+        return f"I have cooked {row[1]} dishes so far! My last dish was served at {to_kl_time(row[2])} (GMT+8 KL)."
+    return "I haven't cooked anything yet — no record found."
 
 
 # ── Command 2: GET_HISTORY ─────────────────────────────────────
 def handle_get_history():
     """'Show me your last 5 dish updates.' - reads socket_data_history."""
+    chef_name = resolve_chef_name()
     conn = open_order_book()
     cursor = conn.cursor()
     cursor.execute("""
@@ -112,61 +123,98 @@ def handle_get_history():
         WHERE user = %s
         ORDER BY updated_at DESC
         LIMIT 5
-    """, (CHEF_NAME,))
+    """, (chef_name,))
     rows = cursor.fetchall()
     cursor.close()
     conn.close()
 
     if not rows:
-        return "Kitchen Activity Log is empty so far - no dishes logged yet."
+        return "I haven't logged any dishes yet — my kitchen activity log is empty!"
 
-    lines = ["Kitchen Activity Log (last 5 dishes):"]
+    lines = ["Here are my last 5 dish updates:"]
     for before, after, ts in rows:
-        lines.append(f"  {before} -> {after} dishes @ {to_kl_time(ts)} (GMT+8 KL)")
+        lines.append(f"  I went from {before} to {after} dishes @ {to_kl_time(ts)} (GMT+8 KL)")
     return "\n".join(lines)
 
 
 # ── Command 3: GET_RANK ────────────────────────────────────────
 def handle_get_rank():
     """'What's my rank on the Top Chef Board?' - reads the leaderboard view."""
+    chef_name = resolve_chef_name()
     conn = open_order_book()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT `rank`, points
         FROM leaderboard
         WHERE user = %s
-    """, (CHEF_NAME,))
+    """, (chef_name,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
     if row:
-        return f"Chef Py-2's Rank: #{row[0]} on the Top Chef Board (with {row[1]} dishes)"
-    return "Not ranked yet - no dishes cooked."
+        return f"I am currently ranked #{row[0]} on the Top Chef Board, with {row[1]} dishes cooked!"
+    return "I am not ranked yet — I haven't cooked any dishes."
 
 
 # ── Command 4: GET_TIME ────────────────────────────────────────
 def handle_get_time():
     """'When did you cook your last dish?' - reads datetime_stamp only."""
+    chef_name = resolve_chef_name()
     conn = open_order_book()
     cursor = conn.cursor()
     cursor.execute("""
         SELECT datetime_stamp
         FROM socket_data WHERE user = %s
-    """, (CHEF_NAME,))
+    """, (chef_name,))
     row = cursor.fetchone()
     cursor.close()
     conn.close()
     if row:
-        return f"Chef Py-2's last dish was cooked at: {to_kl_time(row[0])} (GMT+8 KL)"
-    return "No record found."
+        return f"My last dish was cooked at {to_kl_time(row[0])} (GMT+8 KL)."
+    return "I haven't cooked any dishes yet — no time to report."
+
+
+# ── Command 5: ADD_POINTS ──────────────────────────────────────
+def handle_add_points(amount):
+    chef_name = resolve_chef_name()
+    conn = open_order_book()
+    cursor = conn.cursor()
+    cursor.execute("""
+        INSERT INTO socket_data (user, points, datetime_stamp)
+        VALUES (%s, 0, NOW())
+        ON DUPLICATE KEY UPDATE
+            points = points + %s,
+            datetime_stamp = NOW()
+    """, (chef_name, amount))
+    conn.commit()
+    cursor.close()
+    conn.close()
+    return f"Added {amount} extra dish point(s) to {chef_name}."
 
 
 # ── Command Router ──────────────────────────────────────────────
+def normalize_command(command):
+    """Turn 1-5 input into the matching server command."""
+    normalized = command.strip().upper()
+    if normalized.startswith("ADD_POINTS"):
+        return "ADD_POINTS"
+    mapping = {
+        "1": "GET_POINTS",
+        "2": "GET_HISTORY",
+        "3": "GET_RANK",
+        "4": "GET_TIME",
+        "5": "ADD_POINTS",
+    }
+    return mapping.get(normalized, normalized)
+
+
 COMMANDS = {
+    "GET_NAME":    handle_get_name,
     "GET_POINTS":  handle_get_points,
     "GET_HISTORY": handle_get_history,
     "GET_RANK":    handle_get_rank,
     "GET_TIME":    handle_get_time,
+    "ADD_POINTS":  handle_add_points,
 }
 
 
@@ -179,15 +227,25 @@ def serve_waiter(conn, addr):
             if not data:
                 break
 
-            command = data.upper()
+            command = normalize_command(data)
             print(f"[Waiter asked] {command}")
 
-            if command in COMMANDS:
+            if command == "ADD_POINTS":
+                try:
+                    amount = int(data.split()[-1])
+                except ValueError:
+                    amount = 0
+                if amount <= 0:
+                    response = "Please use: ADD_POINTS <number>"
+                else:
+                    response = COMMANDS[command](amount)
+            elif command in COMMANDS:
                 response = COMMANDS[command]()
             else:
+                chef_name = resolve_chef_name()
                 response = (
-                    "Chef Py-2 doesn't understand. Try one of:\n"
-                    "  GET_POINTS, GET_HISTORY, GET_RANK, GET_TIME"
+                    f"{chef_name} doesn't understand. Try one of:\n"
+                    "  1, 2, 3, 4, 5"
                 )
 
             conn.sendall((response + "\n").encode('utf-8'))
@@ -206,8 +264,8 @@ def main():
     counter.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     counter.bind((HOST, PORT))
     counter.listen(5)
-    print(f"[Chef Py-2] 👨‍🍳 Kitchen station open on port {PORT}. Ready to cook!")
-    print(f"[Chef Py-2] Accepted commands: {', '.join(COMMANDS.keys())}")
+    print(f"[{resolve_chef_name()}] 👨‍🍳 Kitchen station open on port {PORT}. Ready to cook!")
+    print(f"[{resolve_chef_name()}] Accepted commands: 1, 2, 3, 4")
 
     while True:
         conn, addr = counter.accept()
