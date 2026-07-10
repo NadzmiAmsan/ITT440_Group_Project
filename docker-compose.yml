@@ -1,11 +1,3 @@
-# =================================================================
-# THE DOCKER DINER 🍳 - Master Menu (docker-compose.yml)
-# =================================================================
-# This file is the Diner's HEAD MANAGER. It opens every kitchen
-# station (container) and connects them all to the same Diner
-# network so Chefs and Waiters can find each other.
-# =================================================================
-
 networks:
   itt440_network:        # "The Diner" - shared network all stations connect to
     driver: bridge
@@ -36,9 +28,6 @@ services:
       retries: 5
     restart: unless-stopped
 
-  # ═══════════════════════════════════════════
-  # CHEF C's STATION (C Server) — Teammate 1
-  # ═══════════════════════════════════════════
   c_server:
     build: ./c_server
     container_name: itt440_c_server
@@ -53,9 +42,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ═══════════════════════════════════════════
-  # CHEF PY-1's STATION (Python Server 1) — Teammate 2
-  # ═══════════════════════════════════════════
   python_server1:
     build: ./python_server
     container_name: itt440_python_server1
@@ -70,9 +56,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ═══════════════════════════════════════════
-  # CHEF PY-2's STATION (Python Server 2) — Nadzmi
-  # ═══════════════════════════════════════════
   python_server2:
     build: ./python_server2
     container_name: itt440_python_server2
@@ -87,9 +70,6 @@ services:
         condition: service_healthy
     restart: unless-stopped
 
-  # ═══════════════════════════════════════════
-  # WAITER FOR CHEF C (C Client) — Teammate 1
-  # ═══════════════════════════════════════════
   c_client:
     build: ./c_client
     container_name: itt440_c_client
@@ -100,9 +80,6 @@ services:
     stdin_open: true
     tty: true
 
-  # ═══════════════════════════════════════════
-  # WAITER FOR CHEF PY-1 (Python Client 1) — Teammate 2
-  # ═══════════════════════════════════════════
   python_client1:
     build: ./python_client
     container_name: itt440_python_client1
@@ -113,9 +90,6 @@ services:
     stdin_open: true
     tty: true
 
-  # ═══════════════════════════════════════════
-  # WAITER FOR CHEF PY-2 (Python Client 2) — Nadzmi
-  # ═══════════════════════════════════════════
   python_client2:
     build: ./python_client2
     container_name: itt440_python_client2

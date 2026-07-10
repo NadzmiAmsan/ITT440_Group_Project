@@ -1,10 +1,3 @@
-"""
-The Docker Diner - Waiter client for Chef Py-2.
-
-This client connects to the Python server and lets the waiter
-check stats or award extra points.
-"""
-
 import socket
 import time
 

@@ -1,9 +1,3 @@
-"""
-The Docker Diner - Server for Chef Py-2.
-
-This server tracks dish points and answers waiter requests.
-"""
-
 import os
 import socket
 import threading

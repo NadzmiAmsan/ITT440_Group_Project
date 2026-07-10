@@ -1,12 +1,3 @@
-/*
-==============================================================
-The Docker Diner - Chef C client
-==============================================================
-This client connects to Chef C and lets the waiter ask
-about points, history, rank, time, or award extra points.
-==============================================================
-*/
-
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

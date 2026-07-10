@@ -1,12 +1,3 @@
-/*
-==============================================================
-The Docker Diner - Chef C server
-==============================================================
-This server runs Chef C's kitchen station. It tracks points
-in MySQL and answers waiter requests.
-==============================================================
-*/
-
 #define _GNU_SOURCE   /* needed for timegm() and strptime() on glibc */
 
 #include <stdio.h>
