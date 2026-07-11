@@ -391,8 +391,8 @@ ITT440_Group_Project/
 
 | 🧑‍🍳 Station | 👤 On duty |
 |:--|:--|
-| C server & C client | *your name here* |
-| Python server 1 & client 1 | *teammate here* |
+| C server & C client | *Idris* |
+| Python server 1 & client 1 | *Aiman Afzan* |
 | Python server 2, client 2 & the Order Book | **Nadzmi** |
 
 ---
